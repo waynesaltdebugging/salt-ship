@@ -12,17 +12,24 @@ os_versions = {
     "centos": ["6", "7"],
     "ubuntu": ["14.04", "16.04", "18.04"],
     "debian": ["8", "9"],
-    "sles": ["11", "12"],
-    "raspbian": ["jessie"],
     "fedora": ["27", "28"],
-    "arch": ["latest"],
-    "freebsd": ["9", "10"],
+    "archlinux/base": ["latest"],
+    # SLES, Raspbian, FreeBSD, Mac, and Windows images
+    # not available.
 }
 
-salt_types = ["master", "minion"]
+installers = {
+     "centos": "yum install -y",
+     "fedora": "yum install -y",
+     "ubuntu": "apt-get install -y",
+     "debian": "apt-get install -y",
+     "archlinux/base": "yes | pacman -Scc"
+}
 
+salt_types = ["master", "minion", "combo"]
+root_path = Path().resolve()
 for salt_version in salt_versions:
-    p = Path(salt_version)
+    p = root_path / salt_version
     for os_name in os_versions:
         os_path = p / os_name
         for os_version in os_versions[os_name]:
@@ -34,18 +41,28 @@ for salt_version in salt_versions:
                     dedent(
                         f"""
                         FROM {os_name}:{os_version}
+
+                        RUN {installers[os_name]} install python3
+                        RUN python3 -m ensurepip
+                        RUN python3 -m pip install salt
                         """
                     ).lstrip()
                 )
                 if "--no-build" in sys.argv:
                     continue
                 os.chdir(dockerfile_path.parent)
-                subprocess.run(
+                print("Building", dockerfile_path)
+                ret = subprocess.run(
                     [
                         "docker",
                         "build",
                         "--tag",
                         f"waynew/salt/{salt_type}/{os_name}/{os_version}:{salt_version}",
                         ".",
-                    ]
+                    ],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
                 )
+                if ret.returncode != 0:
+                    print("Error with", dockerfile_path)
+                    print(ret.stderr.decode())
